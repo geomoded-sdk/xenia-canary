@@ -44,13 +44,12 @@ DEFINE_bool(mouse_enabled, true,
             "movement maps to the right thumb stick, left click to A, "
             "right click to B, scroll to triggers.",
             "HID");
+DEFINE_double(mouse_sensitivity, 1.0,
+              "Mouse sensitivity multiplier for right thumb stick emulation.",
+              "HID");
 
-DEFINE_float(mouse_sensitivity, 1.0f,
-             "Mouse sensitivity multiplier for right thumb stick emulation.",
-             "HID");
-
-DEFINE_float(mouse_smoothness, 0.5f,
-             "Mouse smoothing factor (0.0 = raw, 1.0 = very smooth).", "HID");
+DEFINE_double(mouse_smoothness, 0.5,
+              "Mouse smoothing factor (0.0 = raw, 1.0 = very smooth).", "HID");
 
 namespace xe {
 namespace hid {
@@ -415,8 +414,8 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
       }
 
       // Mouse movement -> right thumb stick
-      float sensitivity = cvars::mouse_sensitivity;
-      float smoothness = cvars::mouse_smoothness;
+      double sensitivity = cvars::mouse_sensitivity;
+      double smoothness = cvars::mouse_smoothness;
 
       int32_t delta_x = mouse_delta_x_;
       int32_t delta_y = mouse_delta_y_;
