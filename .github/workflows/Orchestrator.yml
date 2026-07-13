@@ -43,7 +43,15 @@ jobs:
     if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/Windows_x86.yml
 
-
+  build-linux:
+    name: Linux (x86-64)
+    needs: [lint, commit-message]
+    if: ${{ !failure() && !cancelled() }}
+    uses: ./.github/workflows/Linux_x86.yml
+    with:
+      runs-on: ${{ needs.lint.outputs.runs-on }}
+      llvm_version: ${{ needs.lint.outputs.llvm_version }}
+      ubuntu_base: ${{ needs.lint.outputs.ubuntu_base }}
 
   # Uncomment when platform support is ready:
   # build-windows-arm64:
@@ -51,9 +59,20 @@ jobs:
   #   needs: [lint]
   #   uses: ./.github/workflows/build-win_arm64.yml
 
+  # build-linux-arm64:
+  #   name: Linux-ARM64
+  #   needs: [lint]
+  #   uses: ./.github/workflows/build-linux_arm64.yml
 
+  # build-macos:
+  #   name: macOS
+  #   needs: [lint]
+  #   uses: ./.github/workflows/build-macos.yml
 
-
+  # build-android:
+  #   name: Android
+  #   needs: [lint]
+  #   uses: ./.github/workflows/build-android.yml
 
   # ===========================================================================
   # Stage 3: Release
