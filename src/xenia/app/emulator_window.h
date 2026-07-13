@@ -259,6 +259,7 @@ class EmulatorWindow {
   void ApplyDisplayConfigForCvars();
 
   void OnKeyDown(ui::KeyEvent& e);
+  void OnKeyUp(ui::KeyEvent& e);
   void OnMouseDown(const ui::MouseEvent& e);
   void ToggleFullscreenOnDoubleClick();
   void FileDrop(const std::filesystem::path& filename);
