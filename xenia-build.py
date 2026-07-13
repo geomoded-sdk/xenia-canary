@@ -23,6 +23,7 @@ import enum
 
 __author__ = "ben.vanik@gmail.com (Ben Vanik)"
 
+os.system("./xb format")
 
 self_path = os.path.dirname(os.path.abspath(__file__))
 
