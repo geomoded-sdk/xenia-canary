@@ -1072,9 +1072,7 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
     }
     if (kiosk_esc_pressed_ && kiosk_x_pressed_) {
       kiosk_exit_requested_ = true;
-      app_context_.CallInUIThread([this]() {
-        window_->RequestClose();
-      });
+      app_context_.CallInUIThread([this]() { window_->RequestClose(); });
       e.set_handled(true);
       return;
     }

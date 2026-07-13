@@ -175,8 +175,8 @@ static bool EnsureDashboardExists(const std::filesystem::path& storage_root) {
       L"https://archive.org/download/xbox-360-system-update-17559-cd-usb/"
       L"SystemUpdate_17559_USB.zip";
   std::wstring zip_wide = zip_path.wstring();
-  HRESULT hr = URLDownloadToFileW(nullptr, url_wide.c_str(), zip_wide.c_str(), 0,
-                                  nullptr);
+  HRESULT hr = URLDownloadToFileW(nullptr, url_wide.c_str(), zip_wide.c_str(),
+                                  0, nullptr);
   if (FAILED(hr)) {
     XELOGE("Failed to download dashboard: HRESULT {:08X}",
            static_cast<uint32_t>(hr));
@@ -195,9 +195,8 @@ static bool EnsureDashboardExists(const std::filesystem::path& storage_root) {
   }
 #else
   // On Linux, try wget first, then curl
-  std::string download_cmd =
-      "wget -q \"" + std::string(kDashboardUrl) + "\" -O \"" +
-      xe::path_to_utf8(zip_path) + "\"";
+  std::string download_cmd = "wget -q \"" + std::string(kDashboardUrl) +
+                             "\" -O \"" + xe::path_to_utf8(zip_path) + "\"";
   int dl_ret = std::system(download_cmd.c_str());
   if (dl_ret != 0) {
     // Try curl as fallback
@@ -214,7 +213,8 @@ static bool EnsureDashboardExists(const std::filesystem::path& storage_root) {
                           "\" -d \"" + xe::path_to_utf8(dashboard_dir) + "\"";
   int uz_ret = std::system(unzip_cmd.c_str());
   if (uz_ret != 0) {
-    XELOGE("Failed to extract dashboard ZIP via unzip, return code: {}", uz_ret);
+    XELOGE("Failed to extract dashboard ZIP via unzip, return code: {}",
+           uz_ret);
     return false;
   }
 #endif
