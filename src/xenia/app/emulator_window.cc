@@ -154,6 +154,11 @@ DEFINE_bool(disable_doubleclick_fullscreen, false,
             "causes Xenia to enter fullscreen mode.",
             "General");
 
+DEFINE_bool(kiosk_mode, false,
+            "Kiosk mode: forces fullscreen, blocks exit except Esc+X, "
+            "auto-boots the Xbox 360 dashboard.",
+            "General");
+
 namespace xe {
 namespace app {
 
@@ -265,11 +270,19 @@ void EmulatorWindow::OnEmulatorInitialized() {
   }
 
   emulator_initialized_ = true;
-  window_->SetMainMenuEnabled(true);
-  // When the user can see that the emulator isn't initializing anymore (the
-  // menu isn't disabled), enter fullscreen if requested.
-  if (cvars::fullscreen) {
+
+  if (cvars::kiosk_mode) {
+    // In kiosk mode: always force fullscreen, hide menu, never show cursor
     SetFullscreen(true);
+    window_->SetMainMenuEnabled(false);
+    window_->SetCursorVisibility(ui::Window::CursorVisibility::kAutoHidden);
+  } else {
+    window_->SetMainMenuEnabled(true);
+    // When the user can see that the emulator isn't initializing anymore (the
+    // menu isn't disabled), enter fullscreen if requested.
+    if (cvars::fullscreen) {
+      SetFullscreen(true);
+    }
   }
 
   if (IsUseNexusForGameBarEnabled()) {
@@ -287,6 +300,10 @@ void EmulatorWindow::OnEmulatorInitialized() {
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
+  // In kiosk mode, only allow closing via the Esc+X combination
+  if (cvars::kiosk_mode && !emulator_window_.kiosk_exit_requested_) {
+    return;
+  }
   emulator_window_.app_context_.QuitFromUIThread();
 }
 
@@ -296,6 +313,10 @@ void EmulatorWindow::EmulatorWindowListener::OnFileDrop(ui::FileDropEvent& e) {
 
 void EmulatorWindow::EmulatorWindowListener::OnKeyDown(ui::KeyEvent& e) {
   emulator_window_.OnKeyDown(e);
+}
+
+void EmulatorWindow::EmulatorWindowListener::OnKeyUp(ui::KeyEvent& e) {
+  emulator_window_.OnKeyUp(e);
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnMouseDown(ui::MouseEvent& e) {
@@ -747,6 +768,17 @@ bool EmulatorWindow::Initialize() {
   window_->AddListener(&window_listener_);
   window_->AddInputListener(&window_listener_, kZOrderEmulatorWindowInput);
 
+  // In kiosk mode, skip creating the menu entirely
+  if (cvars::kiosk_mode) {
+    UpdateTitle();
+    if (!window_->Open()) {
+      XELOGE("Failed to open the platform window");
+      return false;
+    }
+    Profiler::SetUserIO(kZOrderProfiler, window_.get(), nullptr, nullptr);
+    return true;
+  }
+
   // Main menu.
   // FIXME: This code is really messy.
   auto main_menu = MenuItem::Create(MenuItem::Type::kNormal);
@@ -1030,6 +1062,35 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
     return;
   }
 
+  // Kiosk mode: track Esc+X combination, block only dangerous keys
+  if (cvars::kiosk_mode) {
+    if (e.virtual_key() == ui::VirtualKey::kEscape) {
+      kiosk_esc_pressed_ = true;
+    }
+    if (e.virtual_key() == ui::VirtualKey::kX) {
+      kiosk_x_pressed_ = true;
+    }
+    if (kiosk_esc_pressed_ && kiosk_x_pressed_) {
+      kiosk_exit_requested_ = true;
+      app_context_.CallInUIThread([this]() {
+        window_->RequestClose();
+      });
+      e.set_handled(true);
+      return;
+    }
+    // In kiosk mode, block only keys that could break out of kiosk
+    // Allow other keys to pass through for game control
+    switch (e.virtual_key()) {
+      case ui::VirtualKey::kEscape:
+      case ui::VirtualKey::kF11:
+        e.set_handled(true);
+        return;
+      default:
+        break;
+    }
+    return;
+  }
+
   switch (e.virtual_key()) {
     case ui::VirtualKey::kO: {
       if (!e.is_ctrl_pressed()) {
@@ -1115,6 +1176,17 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
   }
 
   e.set_handled(true);
+}
+
+void EmulatorWindow::OnKeyUp(ui::KeyEvent& e) {
+  if (cvars::kiosk_mode) {
+    if (e.virtual_key() == ui::VirtualKey::kEscape) {
+      kiosk_esc_pressed_ = false;
+    }
+    if (e.virtual_key() == ui::VirtualKey::kX) {
+      kiosk_x_pressed_ = false;
+    }
+  }
 }
 
 void EmulatorWindow::OnMouseDown(const ui::MouseEvent& e) {

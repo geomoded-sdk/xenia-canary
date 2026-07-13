@@ -150,6 +150,7 @@ class EmulatorWindow {
     void OnFileDrop(ui::FileDropEvent& e) override;
 
     void OnKeyDown(ui::KeyEvent& e) override;
+    void OnKeyUp(ui::KeyEvent& e) override;
 
     void OnMouseDown(ui::MouseEvent& e) override;
     void OnMouseUp(ui::MouseEvent& e) override;
@@ -326,6 +327,11 @@ class EmulatorWindow {
   std::unique_ptr<XMPConfigDialog> xmp_config_dialog_;
 
   std::vector<RecentTitleEntry> recently_launched_titles_;
+
+  // Kiosk mode state
+  bool kiosk_esc_pressed_ = false;
+  bool kiosk_x_pressed_ = false;
+  bool kiosk_exit_requested_ = false;
 };
 
 }  // namespace app

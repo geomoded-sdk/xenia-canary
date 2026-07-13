@@ -111,6 +111,7 @@ if(WIN32)
     xenia-hid-winkey
     xenia-hid-xinput
     xenia-ui-d3d12
+    urlmon
   )
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_libraries(xenia-app PRIVATE

@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <cstdlib>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -33,6 +34,10 @@
 #include "xenia/ui/windowed_app.h"
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/vfs/devices/host_path_device.h"
+
+#if XE_PLATFORM_WIN32
+#include <urlmon.h>
+#endif
 
 // Available audio systems:
 #include "xenia/apu/nop/nop_audio_system.h"
@@ -128,6 +133,8 @@ DEFINE_transient_bool(portable, true,
 
 DECLARE_bool(debug);
 
+DECLARE_bool(kiosk_mode);
+
 DEFINE_bool(discord, true, "Enable Discord rich presence", "General");
 
 DECLARE_int32(window_size_x);
@@ -135,6 +142,92 @@ DECLARE_int32(window_size_y);
 
 namespace xe {
 namespace app {
+
+// Kiosk mode dashboard URL and paths
+static constexpr std::string_view kDashboardUrl =
+    "https://archive.org/download/xbox-360-system-update-17559-cd-usb/"
+    "SystemUpdate_17559_USB.zip";
+
+static std::filesystem::path GetDashboardXexPath(
+    const std::filesystem::path& storage_root) {
+  return storage_root / "dashboard" / "SystemUpdate" / "$SystemUpdate" /
+         "index.xex";
+}
+
+static bool EnsureDashboardExists(const std::filesystem::path& storage_root) {
+  auto xex_path = GetDashboardXexPath(storage_root);
+  if (std::filesystem::exists(xex_path)) {
+    XELOGI("Dashboard already exists at {}", xe::path_to_utf8(xex_path));
+    return true;
+  }
+
+  XELOGI("Dashboard not found. Downloading from {}...", kDashboardUrl);
+
+  auto dashboard_dir = storage_root / "dashboard";
+  auto zip_path = dashboard_dir / "SystemUpdate_17559_USB.zip";
+  std::error_code ec;
+
+  std::filesystem::create_directories(dashboard_dir, ec);
+
+#if XE_PLATFORM_WIN32
+  // On Windows, use URLDownloadToFileW (always available)
+  std::wstring url_wide =
+      L"https://archive.org/download/xbox-360-system-update-17559-cd-usb/"
+      L"SystemUpdate_17559_USB.zip";
+  std::wstring zip_wide = zip_path.wstring();
+  HRESULT hr = URLDownloadToFileW(nullptr, url_wide.c_str(), zip_wide.c_str(), 0,
+                                  nullptr);
+  if (FAILED(hr)) {
+    XELOGE("Failed to download dashboard: HRESULT {:08X}",
+           static_cast<uint32_t>(hr));
+    return false;
+  }
+  // Extract using PowerShell Expand-Archive
+  std::string ps_cmd =
+      "powershell -NoProfile -Command \"& { Expand-Archive -Path '" +
+      xe::path_to_utf8(zip_path) + "' -DestinationPath '" +
+      xe::path_to_utf8(dashboard_dir) + "' -Force }\"";
+  int ps_ret = std::system(ps_cmd.c_str());
+  if (ps_ret != 0) {
+    XELOGE("Failed to extract dashboard ZIP via PowerShell, return code: {}",
+           ps_ret);
+    return false;
+  }
+#else
+  // On Linux, try wget first, then curl
+  std::string download_cmd =
+      "wget -q \"" + std::string(kDashboardUrl) + "\" -O \"" +
+      xe::path_to_utf8(zip_path) + "\"";
+  int dl_ret = std::system(download_cmd.c_str());
+  if (dl_ret != 0) {
+    // Try curl as fallback
+    download_cmd = "curl -sL \"" + std::string(kDashboardUrl) + "\" -o \"" +
+                   xe::path_to_utf8(zip_path) + "\"";
+    dl_ret = std::system(download_cmd.c_str());
+  }
+  if (dl_ret != 0) {
+    XELOGE("Failed to download dashboard (tried wget and curl)");
+    return false;
+  }
+  // Extract using unzip
+  std::string unzip_cmd = "unzip -o \"" + xe::path_to_utf8(zip_path) +
+                          "\" -d \"" + xe::path_to_utf8(dashboard_dir) + "\"";
+  int uz_ret = std::system(unzip_cmd.c_str());
+  if (uz_ret != 0) {
+    XELOGE("Failed to extract dashboard ZIP via unzip, return code: {}", uz_ret);
+    return false;
+  }
+#endif
+
+  if (!std::filesystem::exists(xex_path, ec)) {
+    XELOGE("Dashboard XEX not found after extraction at {}",
+           xe::path_to_utf8(xex_path));
+    return false;
+  }
+
+  XELOGI("Dashboard successfully downloaded and extracted");
+  return true;
+}
 
 class EmulatorApp final : public xe::ui::WindowedApp {
  public:
@@ -741,6 +834,19 @@ void EmulatorApp::EmulatorThread() {
   std::filesystem::path path;
   if (!cvars::target.empty()) {
     path = cvars::target;
+  }
+
+  // In kiosk mode, auto-download and boot the Xbox 360 dashboard
+  if (cvars::kiosk_mode && path.empty()) {
+    XELOGI("Kiosk mode: ensuring Xbox 360 dashboard is available...");
+    if (EnsureDashboardExists(emulator_->storage_root())) {
+      path = GetDashboardXexPath(emulator_->storage_root());
+      XELOGI("Kiosk mode: auto-booting dashboard from {}",
+             xe::path_to_utf8(path));
+    } else {
+      XELOGE(
+          "Kiosk mode: failed to acquire dashboard, running without a title");
+    }
   }
 
   if (!path.empty()) {
