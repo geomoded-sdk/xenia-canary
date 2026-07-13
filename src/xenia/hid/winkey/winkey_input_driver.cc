@@ -9,6 +9,8 @@
 
 #include "xenia/hid/winkey/winkey_input_driver.h"
 
+#include <algorithm>
+
 #include "xenia/base/logging.h"
 #include "xenia/base/platform_win.h"
 #include "xenia/hid/hid_flags.h"
@@ -36,6 +38,19 @@ DEFINE_int32(
     "Controller port that keyboard emulates. [0, 3] - Keyboard is assigned to "
     "selected slot. Passthrough does not require assigning slot.",
     "HID");
+
+DEFINE_bool(mouse_enabled, true,
+            "Enables mouse to controller emulation in keyboard mode. Mouse "
+            "movement maps to the right thumb stick, left click to A, "
+            "right click to B, scroll to triggers.",
+            "HID");
+
+DEFINE_float(mouse_sensitivity, 1.0f,
+             "Mouse sensitivity multiplier for right thumb stick emulation.",
+             "HID");
+
+DEFINE_float(mouse_smoothness, 0.5f,
+             "Mouse smoothing factor (0.0 = raw, 1.0 = very smooth).", "HID");
 
 namespace xe {
 namespace hid {
@@ -373,6 +388,61 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
         }
       }
     }
+
+    // Process mouse input
+    if (cvars::mouse_enabled && window()->HasFocus()) {
+      // Mouse buttons
+      if (mouse_left_down_) {
+        buttons |= X_INPUT_GAMEPAD_A;
+      }
+      if (mouse_right_down_) {
+        buttons |= X_INPUT_GAMEPAD_B;
+      }
+      if (mouse_middle_down_) {
+        buttons |= X_INPUT_GAMEPAD_X;
+      }
+
+      // Mouse scroll -> triggers (positive = up = right trigger, negative =
+      // down = left trigger)
+      if (mouse_scroll_delta_ > 0) {
+        right_trigger =
+            static_cast<uint8_t>(std::min(255, mouse_scroll_delta_));
+        mouse_scroll_delta_ = 0;
+      } else if (mouse_scroll_delta_ < 0) {
+        left_trigger =
+            static_cast<uint8_t>(std::min(255, -mouse_scroll_delta_));
+        mouse_scroll_delta_ = 0;
+      }
+
+      // Mouse movement -> right thumb stick
+      float sensitivity = cvars::mouse_sensitivity;
+      float smoothness = cvars::mouse_smoothness;
+
+      int32_t delta_x = mouse_delta_x_;
+      int32_t delta_y = mouse_delta_y_;
+      mouse_delta_x_ = 0;
+      mouse_delta_y_ = 0;
+
+      // Apply sensitivity
+      float raw_rx = static_cast<float>(delta_x) * sensitivity * 100.0f;
+      float raw_ry = static_cast<float>(-delta_y) * sensitivity * 100.0f;
+
+      // Clamp to valid range
+      raw_rx = std::clamp(raw_rx, -32768.0f, 32767.0f);
+      raw_ry = std::clamp(raw_ry, -32768.0f, 32767.0f);
+
+      // Smoothing: blend between previous and new
+      if (smoothness > 0.0f && smoothness < 1.0f) {
+        float blend = 1.0f - smoothness;
+        thumb_rx = static_cast<int16_t>(
+            static_cast<float>(thumb_rx) * (1.0f - blend) + raw_rx * blend);
+        thumb_ry = static_cast<int16_t>(
+            static_cast<float>(thumb_ry) * (1.0f - blend) + raw_ry * blend);
+      } else {
+        thumb_rx = static_cast<int16_t>(raw_rx);
+        thumb_ry = static_cast<int16_t>(raw_ry);
+      }
+    }
   }
 
   out_state->packet_number = packet_number_;
@@ -512,6 +582,75 @@ void WinKeyInputDriver::OnKey(ui::KeyEvent& e, bool is_down) {
 
   auto global_lock = global_critical_region_.Acquire();
   key_events_.push(key);
+}
+
+void WinKeyInputDriver::OnMouseDown(ui::MouseEvent& e) {
+  switch (e.button()) {
+    case ui::MouseEvent::Button::kLeft:
+      mouse_left_down_ = true;
+      break;
+    case ui::MouseEvent::Button::kRight:
+      mouse_right_down_ = true;
+      break;
+    case ui::MouseEvent::Button::kMiddle:
+      mouse_middle_down_ = true;
+      break;
+    default:
+      break;
+  }
+}
+
+void WinKeyInputDriver::OnMouseUp(ui::MouseEvent& e) {
+  switch (e.button()) {
+    case ui::MouseEvent::Button::kLeft:
+      mouse_left_down_ = false;
+      break;
+    case ui::MouseEvent::Button::kRight:
+      mouse_right_down_ = false;
+      break;
+    case ui::MouseEvent::Button::kMiddle:
+      mouse_middle_down_ = false;
+      break;
+    default:
+      break;
+  }
+}
+
+void WinKeyInputDriver::OnMouseMove(ui::MouseEvent& e) {
+  if (!mouse_initialized_) {
+    mouse_last_x_ = e.x();
+    mouse_last_y_ = e.y();
+    mouse_initialized_ = true;
+    return;
+  }
+  mouse_delta_x_ += e.x() - mouse_last_x_;
+  mouse_delta_y_ += e.y() - mouse_last_y_;
+  mouse_last_x_ = e.x();
+  mouse_last_y_ = e.y();
+}
+
+void WinKeyInputDriver::OnMouseWheel(ui::MouseEvent& e) {
+  mouse_scroll_delta_ += e.scroll_y();
+}
+
+void WinKeyInputDriver::WinKeyWindowInputListener::OnMouseDown(
+    ui::MouseEvent& e) {
+  driver_.OnMouseDown(e);
+}
+
+void WinKeyInputDriver::WinKeyWindowInputListener::OnMouseUp(
+    ui::MouseEvent& e) {
+  driver_.OnMouseUp(e);
+}
+
+void WinKeyInputDriver::WinKeyWindowInputListener::OnMouseMove(
+    ui::MouseEvent& e) {
+  driver_.OnMouseMove(e);
+}
+
+void WinKeyInputDriver::WinKeyWindowInputListener::OnMouseWheel(
+    ui::MouseEvent& e) {
+  driver_.OnMouseWheel(e);
 }
 
 InputType WinKeyInputDriver::GetInputType() const {

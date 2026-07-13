@@ -59,6 +59,10 @@ class WinKeyInputDriver final : public InputDriver {
 
     void OnKeyDown(ui::KeyEvent& e) override;
     void OnKeyUp(ui::KeyEvent& e) override;
+    void OnMouseDown(ui::MouseEvent& e) override;
+    void OnMouseUp(ui::MouseEvent& e) override;
+    void OnMouseMove(ui::MouseEvent& e) override;
+    void OnMouseWheel(ui::MouseEvent& e) override;
 
    private:
     WinKeyInputDriver& driver_;
@@ -69,6 +73,10 @@ class WinKeyInputDriver final : public InputDriver {
                        const std::string_view binding);
 
   void OnKey(ui::KeyEvent& e, bool is_down);
+  void OnMouseDown(ui::MouseEvent& e);
+  void OnMouseUp(ui::MouseEvent& e);
+  void OnMouseMove(ui::MouseEvent& e);
+  void OnMouseWheel(ui::MouseEvent& e);
 
   WinKeyWindowInputListener window_input_listener_;
 
@@ -77,6 +85,16 @@ class WinKeyInputDriver final : public InputDriver {
   std::vector<KeyBinding> key_bindings_;
   uint8_t key_map_[256];
   uint32_t packet_number_ = 1;
+
+  int32_t mouse_delta_x_ = 0;
+  int32_t mouse_delta_y_ = 0;
+  int32_t mouse_scroll_delta_ = 0;
+  bool mouse_left_down_ = false;
+  bool mouse_right_down_ = false;
+  bool mouse_middle_down_ = false;
+  int32_t mouse_last_x_ = 0;
+  int32_t mouse_last_y_ = 0;
+  bool mouse_initialized_ = false;
 };
 
 }  // namespace winkey

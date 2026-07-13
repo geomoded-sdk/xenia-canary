@@ -135,6 +135,8 @@ DECLARE_bool(debug);
 
 DECLARE_bool(kiosk_mode);
 
+DECLARE_int32(keyboard_mode);
+
 DEFINE_bool(discord, true, "Enable Discord rich presence", "General");
 
 DECLARE_int32(window_size_x);
@@ -569,6 +571,11 @@ std::vector<std::unique_ptr<hid::InputDriver>> EmulatorApp::CreateInputDrivers(
 bool EmulatorApp::OnInitialize() {
   Profiler::Initialize();
   Profiler::ThreadEnter("Main");
+
+  // In kiosk mode, auto-enable the keyboard/mouse HID driver
+  if (cvars::kiosk_mode) {
+    cvars::keyboard_mode = 1;
+  }
 
   // Figure out where internal files and content should go.
   std::filesystem::path storage_root = cvars::storage_root;
